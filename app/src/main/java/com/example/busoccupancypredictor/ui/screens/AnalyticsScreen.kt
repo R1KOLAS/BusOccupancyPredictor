@@ -13,10 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -24,7 +22,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.busoccupancypredictor.data.BackendAnalyticsRepository
 import com.example.busoccupancypredictor.domain.HourLoad
 import com.example.busoccupancypredictor.domain.SeatStatus
 import com.example.busoccupancypredictor.domain.TimeSummary
@@ -43,12 +46,60 @@ fun AnalyticsScreen(
     routeMapId: String,
     routeId: Int,
     routeLabel: String = routeId.toString(),
+    useBackend: Boolean = true,
     onOpenDetails: () -> Unit
 ) {
     val context = LocalContext.current
-    val analytics = remember(routeMapId) {
-        buildAnalyticsBundle(context, routeMapId)
+    val fallbackAnalytics = remember(routeMapId) { buildAnalyticsBundle(context, routeMapId) }
+    val cachedAnalytics = remember(routeMapId, useBackend) {
+        if (useBackend) BackendAnalyticsRepository.getCachedAnalytics(routeMapId) else null
     }
+    var backendFailed by remember(routeMapId, useBackend) { mutableStateOf(false) }
+    var analytics by remember(routeMapId, useBackend) {
+        mutableStateOf(
+            when {
+                cachedAnalytics != null -> buildAnalyticsBundle(context, routeMapId, cachedAnalytics)
+                useBackend -> fallbackAnalytics.copy(
+                    summary = emptyList(),
+                    hours = emptyList(),
+                    busyStops = emptyList(),
+                    weekdayStats = emptyList(),
+                    directionStats = emptyList()
+                )
+                else -> fallbackAnalytics
+            }
+        )
+    }
+
+    LaunchedEffect(routeMapId, useBackend) {
+        analytics = when {
+            cachedAnalytics != null -> buildAnalyticsBundle(context, routeMapId, cachedAnalytics)
+            useBackend -> fallbackAnalytics.copy(
+                summary = emptyList(),
+                hours = emptyList(),
+                busyStops = emptyList(),
+                weekdayStats = emptyList(),
+                directionStats = emptyList()
+            )
+            else -> fallbackAnalytics
+        }
+        backendFailed = false
+        if (useBackend) {
+            runCatching { BackendAnalyticsRepository.fetchAnalytics(routeMapId) }
+                .onSuccess { analytics = buildAnalyticsBundle(context, routeMapId, it) }
+                .onFailure {
+                    backendFailed = true
+                    analytics = fallbackAnalytics.copy(
+                        summary = emptyList(),
+                        hours = emptyList(),
+                        busyStops = emptyList(),
+                        weekdayStats = emptyList(),
+                        directionStats = emptyList()
+                    )
+                }
+        }
+    }
+
     val summary = analytics.summary
     val hours = analytics.hours
     val topStops = analytics.busyStops.take(3)
@@ -69,6 +120,12 @@ fun AnalyticsScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+
+        if (backendFailed && useBackend) {
+            BackendUnavailableBlock()
+            Spacer(Modifier.height(12.dp))
+            return@Column
+        }
 
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -131,6 +188,24 @@ fun AnalyticsScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun BackendUnavailableBlock() {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Сервер недоступен", fontWeight = FontWeight.Bold)
+            Text(
+                "В backend-режиме аналитика загружается только с сервера. Проверьте, что backend запущен.",
+                color = Brand.GrayText,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 }
 
@@ -214,11 +289,7 @@ private fun HourBars(items: List<HourLoad>) {
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        "${item.hour}:00",
-                        color = Brand.GrayText,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text("${item.hour}:00", color = Brand.GrayText, style = MaterialTheme.typography.bodySmall)
                 }
             }
             repeat(count - items.size) {

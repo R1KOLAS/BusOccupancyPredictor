@@ -17,9 +17,9 @@ from urllib.request import Request, urlopen
 
 
 BASE_URL = "https://2gis.kz"
-DEFAULT_SEARCH_HTML = "data.html"
-DEFAULT_OUT_JSON = "stops_2gis.json"
-DEFAULT_OUT_CSV = "stops_2gis.csv"
+DEFAULT_SEARCH_HTML = "data/raw/2gis/data.html"
+DEFAULT_OUT_JSON = "data/exports/stops_2gis.json"
+DEFAULT_OUT_CSV = "data/exports/stops_2gis.csv"
 
 
 STATION_PATH_RE = re.compile(r"/almaty/station/(\d+)")

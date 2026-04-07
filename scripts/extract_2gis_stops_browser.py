@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover
     PlaywrightTimeoutError = Exception
 
 
-DEFAULT_SEARCH_HTML = "data.html"
+DEFAULT_SEARCH_HTML = "data/raw/2gis/data.html"
 DEFAULT_USER_DATA_DIR = ".playwright_2gis_profile"
 SEARCH_LINK_SELECTOR = 'a[href*="/almaty/station/"]'
 PAGE_LINK_SELECTOR = 'a[href*="/page/"]'

@@ -1,9 +1,20 @@
 package com.example.busoccupancypredictor.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,10 +25,12 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.busoccupancypredictor.data.BackendAnalyticsRepository
 import com.example.busoccupancypredictor.domain.SeatStatus
 import com.example.busoccupancypredictor.domain.StopFrequency
 import com.example.busoccupancypredictor.ui.Brand
@@ -40,13 +54,60 @@ fun AnalyticsDetailsScreen(
     routeMapId: String,
     routeId: Int,
     routeLabel: String = routeId.toString(),
+    useBackend: Boolean = true,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val analytics = remember(routeMapId) {
-        buildAnalyticsBundle(context, routeMapId)
+    val fallbackAnalytics = remember(routeMapId) { buildAnalyticsBundle(context, routeMapId) }
+    val cachedAnalytics = remember(routeMapId, useBackend) {
+        if (useBackend) BackendAnalyticsRepository.getCachedAnalytics(routeMapId) else null
+    }
+    var backendFailed by remember(routeMapId, useBackend) { mutableStateOf(false) }
+    var analytics by remember(routeMapId, useBackend) {
+        mutableStateOf(
+            when {
+                cachedAnalytics != null -> buildAnalyticsBundle(context, routeMapId, cachedAnalytics)
+                useBackend -> fallbackAnalytics.copy(
+                    summary = emptyList(),
+                    hours = emptyList(),
+                    busyStops = emptyList(),
+                    weekdayStats = emptyList(),
+                    directionStats = emptyList()
+                )
+                else -> fallbackAnalytics
+            }
+        )
     }
     var tab by remember { mutableStateOf(0) }
+
+    LaunchedEffect(routeMapId, useBackend) {
+        analytics = when {
+            cachedAnalytics != null -> buildAnalyticsBundle(context, routeMapId, cachedAnalytics)
+            useBackend -> fallbackAnalytics.copy(
+                summary = emptyList(),
+                hours = emptyList(),
+                busyStops = emptyList(),
+                weekdayStats = emptyList(),
+                directionStats = emptyList()
+            )
+            else -> fallbackAnalytics
+        }
+        backendFailed = false
+        if (useBackend) {
+            runCatching { BackendAnalyticsRepository.fetchAnalytics(routeMapId) }
+                .onSuccess { analytics = buildAnalyticsBundle(context, routeMapId, it) }
+                .onFailure {
+                    backendFailed = true
+                    analytics = fallbackAnalytics.copy(
+                        summary = emptyList(),
+                        hours = emptyList(),
+                        busyStops = emptyList(),
+                        weekdayStats = emptyList(),
+                        directionStats = emptyList()
+                    )
+                }
+        }
+    }
 
     Column(
         Modifier
@@ -62,7 +123,7 @@ fun AnalyticsDetailsScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { androidx.compose.material3.Icon(Icons.AutoMirrored.Outlined.ArrowBack, null) }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null) }
                 Text("Аналитика", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
             AssistChip(
@@ -73,6 +134,12 @@ fun AnalyticsDetailsScreen(
         }
 
         Spacer(Modifier.height(10.dp))
+
+        if (backendFailed && useBackend) {
+            SimpleBackendUnavailableBlock()
+            Spacer(Modifier.height(10.dp))
+            return@Column
+        }
 
         Row(
             Modifier
@@ -332,5 +399,23 @@ private fun AdviceBar(text: String) {
     ) {
         Text("Совет", color = Color.White, fontWeight = FontWeight.Bold)
         Text(text, color = Color.White.copy(alpha = 0.9f))
+    }
+}
+
+@Composable
+private fun SimpleBackendUnavailableBlock() {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Сервер недоступен", fontWeight = FontWeight.Bold)
+            Text(
+                "В backend-режиме аналитика загружается только с сервера. Проверьте, что backend запущен.",
+                color = Brand.GrayText,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 }

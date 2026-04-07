@@ -3,7 +3,16 @@ package com.example.busoccupancypredictor.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +43,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.busoccupancypredictor.data.BackendForecastRepository
+import com.example.busoccupancypredictor.data.BackendForecastResult
 import com.example.busoccupancypredictor.data.FakeData
 import com.example.busoccupancypredictor.data.RoutesRepository
 import com.example.busoccupancypredictor.domain.ForecastPoint
@@ -52,31 +64,31 @@ fun ForecastScreen(
     routeMapId: String,
     routeId: Int,
     routeLabel: String = routeId.toString(),
+    useBackend: Boolean = true,
     onBack: (() -> Unit)?
 ) {
     val context = LocalContext.current
     val routes = remember {
         runCatching { RoutesRepository.loadRoutes(context) }.getOrDefault(emptyList())
     }
-    val route = remember(routeMapId, routes) {
+    val route = remember(routeMapId, routeLabel, routes) {
         routes.firstOrNull { it.id == routeMapId }
+            ?: routes.firstOrNull { it.number.equals(routeLabel, ignoreCase = true) }
     }
     val stopOptions = remember(route) {
-        route
-            ?.directions
-            ?.flatMap { direction ->
-                direction.platforms.mapIndexed { index, platform ->
-                    ForecastStopOption(
-                        key = "${direction.directionId}:${platform.platformId}",
-                        name = platform.name,
-                        directionLabel = directionLabel(direction.directionType, route.fromName, route.toName),
-                        stopIndex = index,
-                        totalStops = direction.platforms.size,
-                        platform = platform
-                    )
-                }
+        route?.directions?.flatMap { direction ->
+            direction.platforms.mapIndexed { index, platform ->
+                ForecastStopOption(
+                    key = "${direction.directionId}:${platform.platformId}",
+                    directionId = direction.directionId,
+                    name = platform.name,
+                    directionLabel = directionLabel(direction.directionType, route.fromName, route.toName),
+                    stopIndex = index,
+                    totalStops = direction.platforms.size,
+                    platform = platform
+                )
             }
-            .orEmpty()
+        }.orEmpty()
     }
     var selectedStopKey by rememberSaveable(routeMapId) {
         mutableStateOf(stopOptions.firstOrNull()?.key.orEmpty())
@@ -94,11 +106,123 @@ fun ForecastScreen(
     var selectedTime by rememberSaveable(routeMapId) { mutableStateOf(currentTime) }
     var selectedWeather by rememberSaveable(routeMapId) { mutableStateOf<WeatherOption?>(null) }
 
-    val currentLoad = remember(routeId, selectedStop?.key, selectedDay, selectedTime, selectedWeather) {
+    val cachedBackendForecast = remember(route?.id, selectedStop?.key, selectedDay, selectedTime, selectedWeather, useBackend) {
+        val stop = selectedStop
+        if (!useBackend || route == null || stop == null) {
+            null
+        } else {
+            BackendForecastRepository.getCachedForecast(
+                routeId = route.id,
+                directionId = stop.directionId,
+                stopId = stop.platform.stationId.ifBlank { stop.platform.platformId },
+                dayOfWeek = backendDayOfWeek(selectedDay),
+                timeValue = selectedTime,
+                weather = backendWeather(selectedWeather)
+            )
+        }
+    }
+    var backendForecast by remember(route?.id, selectedStop?.key, selectedDay, selectedTime, selectedWeather, useBackend) {
+        mutableStateOf(cachedBackendForecast)
+    }
+    var backendFailed by remember(route?.id, selectedStop?.key, selectedDay, selectedTime, selectedWeather, useBackend) {
+        mutableStateOf(false)
+    }
+    var isBackendLoading by remember(route?.id, selectedStop?.key, selectedDay, selectedTime, selectedWeather, useBackend) {
+        mutableStateOf(useBackend && cachedBackendForecast == null)
+    }
+    var backendStatusMessage by remember(route?.id, selectedStop?.key, selectedDay, selectedTime, selectedWeather, useBackend) {
+        mutableStateOf(
+            when {
+                !useBackend -> "Локальный режим запуска"
+                cachedBackendForecast != null -> "Данные загружены из кэша backend"
+                else -> "Ожидание запроса"
+            }
+        )
+    }
+
+    val localCurrentLoad = remember(routeId, selectedStop?.key, selectedDay, selectedTime, selectedWeather) {
         adjustedCurrentLoad(routeId, selectedStop, selectedDay, selectedTime, selectedWeather)
     }
-    val forecast = remember(routeId, selectedStop?.key, selectedDay, selectedTime, selectedWeather) {
+    val localForecast = remember(routeId, selectedStop?.key, selectedDay, selectedTime, selectedWeather) {
         adjustedForecast(routeId, selectedStop, selectedDay, selectedTime, selectedWeather)
+    }
+    val showBackendPlaceholders = useBackend && backendForecast == null && !backendFailed
+
+    val displayedCurrentLoad = remember(backendForecast, localCurrentLoad, useBackend, backendFailed) {
+        when {
+            backendForecast != null -> LoadNow(
+                status = seatStatusFromBackend(backendForecast!!.seatStatus, backendForecast!!.occupancyPercent),
+                percent = backendForecast!!.occupancyPercent
+            )
+            !useBackend -> localCurrentLoad
+            else -> LoadNow(SeatStatus.FEW, 0)
+        }
+    }
+    val displayedForecast = remember(backendForecast, localForecast, useBackend, backendFailed) {
+        when {
+            backendForecast != null -> backendForecast!!.forecast
+                .map { point ->
+                    ForecastPoint(
+                        minutes = point.minutes,
+                        status = seatStatusFromBackend(point.seatStatus, point.occupancyPercent),
+                        percent = point.occupancyPercent
+                    )
+                }
+                .sortedBy { it.minutes }
+            !useBackend -> localForecast
+            else -> emptyList()
+        }
+    }
+    val currentCardTitle = remember(selectedDay, selectedTime, currentDay, currentTime) {
+        if (selectedDay == currentDay && selectedTime == currentTime) {
+            "Сейчас"
+        } else {
+            "$selectedDay • $selectedTime"
+        }
+    }
+
+    LaunchedEffect(routeMapId, selectedStop?.key, selectedDay, selectedTime, selectedWeather, useBackend) {
+        val stop = selectedStop
+        if (!useBackend) {
+            backendForecast = null
+            backendFailed = false
+            isBackendLoading = false
+            backendStatusMessage = "Локальный режим запуска"
+            return@LaunchedEffect
+        }
+
+        if (route == null || stop == null) {
+            backendForecast = null
+            backendFailed = true
+            isBackendLoading = false
+            backendStatusMessage = if (route == null) "Маршрут не найден в приложении" else "Остановка ещё не выбрана"
+            return@LaunchedEffect
+        }
+
+        backendFailed = false
+        isBackendLoading = backendForecast == null
+        backendStatusMessage = if (backendForecast == null) "Подключение к серверу..." else "Обновление данных backend..."
+
+        val result = runCatching {
+            BackendForecastRepository.fetchForecast(
+                routeId = route.id,
+                directionId = stop.directionId,
+                stopId = stop.platform.stationId.ifBlank { stop.platform.platformId },
+                dayOfWeek = backendDayOfWeek(selectedDay),
+                timeValue = selectedTime,
+                weather = backendWeather(selectedWeather)
+            )
+        }
+        result.onSuccess {
+            backendForecast = it
+            backendFailed = false
+            backendStatusMessage = "Данные получены с backend"
+        }.onFailure { error ->
+            backendForecast = null
+            backendFailed = true
+            backendStatusMessage = error.message ?: error::class.java.simpleName
+        }
+        isBackendLoading = false
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -109,6 +233,13 @@ fun ForecastScreen(
                 .padding(horizontal = 18.dp)
                 .padding(bottom = 92.dp)
         ) {
+            DataSourceIndicator(
+                isLoading = isBackendLoading,
+                isBackendActive = backendForecast != null,
+                statusMessage = backendStatusMessage,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+
             Spacer(Modifier.height(10.dp))
 
             Row(
@@ -135,11 +266,7 @@ fun ForecastScreen(
 
             Text("Остановка", color = Brand.GrayText, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
-            StopDropdown(
-                options = stopOptions,
-                selected = selectedStop,
-                onSelect = { selectedStopKey = it.key }
-            )
+            StopDropdown(options = stopOptions, selected = selectedStop, onSelect = { selectedStopKey = it.key })
 
             Spacer(Modifier.height(12.dp))
 
@@ -189,37 +316,43 @@ fun ForecastScreen(
             selectedStop?.let {
                 Spacer(Modifier.height(8.dp))
                 DirectionInfoCard(
-                    direction = it.directionLabel,
-                    stopText = "${it.name} • ${it.stopIndex + 1} из ${it.totalStops}"
+                    direction = backendForecast?.directionLabel?.ifBlank { it.directionLabel } ?: it.directionLabel,
+                    stopText = "${backendForecast?.stopName ?: it.name} • ${(backendForecast?.stopIndex ?: it.stopIndex) + 1} из ${backendForecast?.totalStops ?: it.totalStops}"
                 )
             }
 
             Spacer(Modifier.height(12.dp))
 
-            YellowOutlineCard {
-                Text("Сейчас", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                StatusPill(
-                    status = currentLoad.status,
-                    text = when (currentLoad.status) {
-                        SeatStatus.AVAILABLE -> "Сидячие есть"
-                        SeatStatus.FEW -> "Свободных мало"
-                        SeatStatus.NONE -> "Сидячих нет"
+            if (backendFailed && useBackend) {
+                ServerUnavailableCard()
+            } else if (showBackendPlaceholders) {
+                LoadingCurrentCard(currentCardTitle)
+            } else {
+                YellowOutlineCard {
+                    Text(currentCardTitle, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    StatusPill(
+                        status = displayedCurrentLoad.status,
+                        text = when (displayedCurrentLoad.status) {
+                            SeatStatus.AVAILABLE -> "Сидячие есть"
+                            SeatStatus.FEW -> "Свободных мало"
+                            SeatStatus.NONE -> "Сидячих нет"
+                        }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        when (displayedCurrentLoad.status) {
+                            SeatStatus.AVAILABLE -> "Есть сидячие места"
+                            SeatStatus.FEW -> "Свободных сидячих мест мало"
+                            SeatStatus.NONE -> "Свободных сидячих мест нет"
+                        },
+                        color = Brand.GrayText,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Text("${displayedCurrentLoad.percent}%", fontWeight = FontWeight.Bold)
                     }
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    when (currentLoad.status) {
-                        SeatStatus.AVAILABLE -> "Есть сидячие места"
-                        SeatStatus.FEW -> "Свободных сидячих мест мало"
-                        SeatStatus.NONE -> "Свободных сидячих мест нет"
-                    },
-                    color = Brand.GrayText,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Text("${currentLoad.percent}%", fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -230,19 +363,35 @@ fun ForecastScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                forecast.chunked(2).forEach { rowItems ->
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        rowItems.forEach { point ->
-                            Box(Modifier.weight(1f)) {
-                                ForecastCard(point)
-                            }
+            if (backendFailed && useBackend) {
+                Spacer(Modifier.height(10.dp))
+            } else if (showBackendPlaceholders) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    repeat(2) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(Modifier.weight(1f)) { LoadingForecastCard() }
+                            Box(Modifier.weight(1f)) { LoadingForecastCard() }
                         }
-                        repeat(2 - rowItems.size) {
-                            Spacer(Modifier.weight(1f))
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    displayedForecast.chunked(2).forEach { rowItems ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            rowItems.forEach { point ->
+                                Box(Modifier.weight(1f)) {
+                                    ForecastCard(point)
+                                }
+                            }
+                            repeat(2 - rowItems.size) {
+                                Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -251,17 +400,40 @@ fun ForecastScreen(
             Spacer(Modifier.height(12.dp))
         }
 
-        RecommendationBar(
-            text = recommendationText(selectedStop, selectedDay, selectedTime, forecast),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 18.dp, vertical = 10.dp)
+        if (!showBackendPlaceholders && !(backendFailed && useBackend)) {
+            RecommendationBar(
+                text = recommendationText(selectedStop, selectedDay, selectedTime, displayedForecast),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 18.dp, vertical = 10.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ServerUnavailableCard() {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, Brand.GrayBorder, RoundedCornerShape(16.dp))
+            .background(Color.White)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Сервер недоступен", fontWeight = FontWeight.Bold)
+        Text(
+            "В backend-режиме данные должны приходить только с сервера. Проверьте, что backend запущен и доступен.",
+            color = Brand.GrayText,
+            style = MaterialTheme.typography.bodyMedium
         )
     }
 }
 
 private data class ForecastStopOption(
     val key: String,
+    val directionId: String,
     val name: String,
     val directionLabel: String,
     val stopIndex: Int,
@@ -386,11 +558,44 @@ private fun DirectionInfoCard(direction: String, stopText: String) {
     ) {
         Text("Направление: $direction", fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(4.dp))
-        Text(
-            stopText,
-            color = Brand.GrayText,
-            style = MaterialTheme.typography.bodySmall
-        )
+        Text(stopText, color = Brand.GrayText, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun LoadingCurrentCard(title: String) {
+    YellowOutlineCard {
+        Text(title, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(10.dp))
+        Text("Получаем данные с backend...", color = Brand.GrayText, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun LoadingForecastCard() {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Загрузка...", fontWeight = FontWeight.Bold)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Brand.GrayBg)
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth(0.7f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Brand.GrayBg)
+            )
+        }
     }
 }
 
@@ -478,16 +683,14 @@ private fun directionLabel(directionType: String, fromName: String, toName: Stri
     }
 }
 
-private fun currentDayLabel(): String {
-    return when (LocalDate.now().dayOfWeek.value) {
-        1 -> "Пн"
-        2 -> "Вт"
-        3 -> "Ср"
-        4 -> "Чт"
-        5 -> "Пт"
-        6 -> "Сб"
-        else -> "Вс"
-    }
+private fun currentDayLabel(): String = when (LocalDate.now().dayOfWeek.value) {
+    1 -> "Пн"
+    2 -> "Вт"
+    3 -> "Ср"
+    4 -> "Чт"
+    5 -> "Пт"
+    6 -> "Сб"
+    else -> "Вс"
 }
 
 private fun buildTimeOptions(): List<String> {
@@ -518,9 +721,72 @@ private fun recommendationText(
 ): String {
     val bestPoint = forecast.minByOrNull { it.percent }
     return if ((bestPoint?.minutes ?: 0) <= 20) {
-        "Рекомендация: для ${stop?.name ?: "маршрута"} в $dayLabel около $timeLabel загрузка скоро снизится, можно подождать 10–20 минут"
+        "Рекомендация: для ${stop?.name ?: "маршрута"} в $dayLabel около $timeLabel загрузка скоро снизится, можно подождать 10-20 минут"
     } else {
         "Рекомендация: для ${stop?.name ?: "маршрута"} в $dayLabel около $timeLabel лучше планировать посадку без ожидания"
+    }
+}
+
+private fun backendDayOfWeek(dayLabel: String): String = when (dayLabel) {
+    "Пн" -> "Mon"
+    "Вт" -> "Tue"
+    "Ср" -> "Wed"
+    "Чт" -> "Thu"
+    "Пт" -> "Fri"
+    "Сб" -> "Sat"
+    "Вс" -> "Sun"
+    else -> "Mon"
+}
+
+private fun backendWeather(weather: WeatherOption?): String = when (weather) {
+    WeatherOption.RAIN -> "rain"
+    WeatherOption.SNOW -> "snow"
+    null -> "clear"
+}
+
+private fun seatStatusFromBackend(raw: String, percent: Int): SeatStatus = when (raw.lowercase()) {
+    "available" -> SeatStatus.AVAILABLE
+    "few" -> SeatStatus.FEW
+    "none" -> SeatStatus.NONE
+    else -> seatStatusForPercent(percent)
+}
+
+@Composable
+private fun DataSourceIndicator(
+    isLoading: Boolean,
+    isBackendActive: Boolean,
+    statusMessage: String,
+    modifier: Modifier = Modifier
+) {
+    val (text, borderColor, backgroundColor) = when {
+        isLoading -> Triple("Источник: подключение к серверу...", Brand.Yellow, Brand.YellowSoft)
+        isBackendActive -> Triple("Источник: backend", Color(0xFF1F9D55), Color(0xFFEAF8EF))
+        else -> Triple("Источник: локальный fallback", Brand.GrayBorder, Color.White)
+    }
+
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .background(backgroundColor)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = Brand.Black,
+            fontWeight = FontWeight.Medium
+        )
+        if (statusMessage.isNotBlank()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = statusMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = Brand.GrayText
+            )
+        }
     }
 }
 

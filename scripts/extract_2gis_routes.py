@@ -16,9 +16,9 @@ from urllib.request import Request, urlopen
 
 
 BASE_URL = "https://2gis.kz"
-DEFAULT_SEARCH_HTML = "bus.html"
-DEFAULT_OUT_JSON = "routes_2gis.json"
-DEFAULT_OUT_CSV = "routes_2gis.csv"
+DEFAULT_SEARCH_HTML = "data/raw/2gis/bus.html"
+DEFAULT_OUT_JSON = "data/exports/routes_2gis.json"
+DEFAULT_OUT_CSV = "data/exports/routes_2gis.csv"
 
 
 ROUTE_PATH_RE = re.compile(r"/almaty/route/(\d+)")

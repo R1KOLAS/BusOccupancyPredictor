@@ -1,6 +1,7 @@
 package com.example.busoccupancypredictor.ui.screens
 
 import android.content.Context
+import com.example.busoccupancypredictor.data.BackendAnalyticsResult
 import com.example.busoccupancypredictor.data.RoutesRepository
 import com.example.busoccupancypredictor.domain.BusRouteMapItem
 import com.example.busoccupancypredictor.domain.HourLoad
@@ -54,6 +55,50 @@ internal fun buildAnalyticsBundle(context: Context, routeMapId: String): Analyti
             directionStats = buildDirectionStats(route)
         )
     }
+}
+
+internal fun buildAnalyticsBundle(
+    context: Context,
+    routeMapId: String,
+    backend: BackendAnalyticsResult
+): AnalyticsBundle {
+    val routes = runCatching { RoutesRepository.loadRoutes(context) }.getOrDefault(emptyList())
+    val route = routes.firstOrNull { it.id == routeMapId }
+    return AnalyticsBundle(
+        route = route,
+        summary = backend.summary.map {
+            TimeSummary(
+                title = it.title,
+                timeRange = it.timeRange,
+                status = statusFromBackend(it.status),
+                highlighted = it.highlighted
+            )
+        },
+        hours = backend.hours.map { HourLoad(hour = it.hour, status = statusFromBackend(it.status)) },
+        busyStops = backend.busyStops.map {
+            StopFrequency(
+                name = it.name,
+                status = statusFromBackend(it.status),
+                percent = it.percent
+            )
+        },
+        weekdayStats = backend.weekdayStats.map {
+            DayLoadStat(
+                label = it.label,
+                status = statusFromBackend(it.status),
+                percent = it.percent
+            )
+        },
+        directionStats = backend.directionStats.map {
+            RouteDirectionStat(
+                title = it.title,
+                stopCount = it.stopCount,
+                pathPointCount = it.pathPointCount,
+                status = statusFromBackend(it.status),
+                percent = it.percent
+            )
+        }
+    )
 }
 
 private fun buildTimeSummary(route: BusRouteMapItem): List<TimeSummary> {
@@ -127,9 +172,7 @@ private fun buildWeekdayStats(route: BusRouteMapItem): List<DayLoadStat> {
 private fun buildDirectionStats(route: BusRouteMapItem): List<RouteDirectionStat> {
     val maxStops = route.directions.maxOfOrNull { it.platforms.size }?.coerceAtLeast(1) ?: 1
     return route.directions.map { direction ->
-        val percent = (
-            direction.platforms.size * 100.0 / maxStops
-            ).roundToInt().coerceIn(28, 92)
+        val percent = (direction.platforms.size * 100.0 / maxStops).roundToInt().coerceIn(28, 92)
         RouteDirectionStat(
             title = analyticsDirectionLabel(direction.directionType, route.fromName, route.toName),
             stopCount = direction.platforms.size,
@@ -178,6 +221,12 @@ private fun aggregateStatus(items: List<HourLoad>): SeatStatus {
 internal fun statusForPercent(percent: Int): SeatStatus = when {
     percent >= 70 -> SeatStatus.NONE
     percent >= 45 -> SeatStatus.FEW
+    else -> SeatStatus.AVAILABLE
+}
+
+internal fun statusFromBackend(status: String): SeatStatus = when (status.lowercase()) {
+    "none" -> SeatStatus.NONE
+    "few" -> SeatStatus.FEW
     else -> SeatStatus.AVAILABLE
 }
 

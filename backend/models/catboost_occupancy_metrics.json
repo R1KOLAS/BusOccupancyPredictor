@@ -1,0 +1,39 @@
+{
+  "rows_total": 161640,
+  "rows_train": 129312,
+  "rows_valid": 32328,
+  "mae": 4.2979,
+  "rmse": 5.0554,
+  "feature_columns": [
+    "weekday",
+    "is_weekend",
+    "hour",
+    "minute",
+    "route_id",
+    "route_number",
+    "direction_id",
+    "direction_type",
+    "stop_id",
+    "stop_name",
+    "stop_index",
+    "total_stops",
+    "stop_progress_ratio",
+    "is_terminal_stop",
+    "weather",
+    "interval_minutes",
+    "active_buses_count",
+    "direction_platform_count",
+    "direction_path_points_count"
+  ],
+  "categorical_features": [
+    "weekday",
+    "route_id",
+    "route_number",
+    "direction_id",
+    "direction_type",
+    "stop_id",
+    "stop_name",
+    "weather"
+  ],
+  "model_path": "R:\\Desktop\\alihan_dip\\BusOccupancyPredictor\\BusOccupancyPredictor\\backend\\models\\catboost_occupancy.cbm"
+}

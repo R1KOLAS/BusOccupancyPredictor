@@ -28,6 +28,11 @@ import com.example.busoccupancypredictor.ui.screens.MapScreen
 import com.example.busoccupancypredictor.ui.screens.RouteDetailsScreen
 import com.example.busoccupancypredictor.ui.screens.RoutesScreen
 
+private enum class LaunchMode {
+    BACKEND,
+    LOCAL
+}
+
 @Composable
 fun AppRoot() {
     val nav = rememberNavController()
@@ -37,6 +42,7 @@ fun AppRoot() {
     }
     var pendingMapRouteId by rememberSaveable { mutableStateOf("") }
     var pendingMapRequestNonce by rememberSaveable { mutableStateOf(0) }
+    var launchModeName by rememberSaveable { mutableStateOf(LaunchMode.BACKEND.name) }
     var selectedRouteId by rememberSaveable { mutableStateOf("") }
     var selectedRouteMapId by rememberSaveable { mutableStateOf("") }
     var selectedRouteLabel by rememberSaveable { mutableStateOf("") }
@@ -46,6 +52,7 @@ fun AppRoot() {
         ?.substringBefore("/")
         ?.substringBefore("?")
         ?: "boot_loading"
+    val launchMode = runCatching { LaunchMode.valueOf(launchModeName) }.getOrDefault(LaunchMode.BACKEND)
 
     val showBottom = current != "intro" && current != "loading" && current != "boot_loading"
     val showRouteInsights = selectedRouteId.isNotBlank()
@@ -84,13 +91,15 @@ fun AppRoot() {
             modifier = Modifier,
             pendingMapRouteId = pendingMapRouteId,
             pendingMapRequestNonce = pendingMapRequestNonce,
+            launchMode = launchMode,
             selectedRouteMapId = selectedRouteMapId,
             selectedRouteLabel = selectedRouteLabel,
             selectedDataRouteId = selectedDataRouteId,
             activateRoute = ::activateRoute,
             clearActiveRoute = ::clearActiveRoute,
             onPendingMapRouteIdChange = { pendingMapRouteId = it },
-            onPendingMapRequestNonceChange = { pendingMapRequestNonce = it }
+            onPendingMapRequestNonceChange = { pendingMapRequestNonce = it },
+            onLaunchModeChange = { launchModeName = it.name }
         )
     } else {
         Scaffold(
@@ -131,13 +140,15 @@ fun AppRoot() {
                 modifier = Modifier.padding(pad),
                 pendingMapRouteId = pendingMapRouteId,
                 pendingMapRequestNonce = pendingMapRequestNonce,
+                launchMode = launchMode,
                 selectedRouteMapId = selectedRouteMapId,
                 selectedRouteLabel = selectedRouteLabel,
                 selectedDataRouteId = selectedDataRouteId,
                 activateRoute = ::activateRoute,
                 clearActiveRoute = ::clearActiveRoute,
                 onPendingMapRouteIdChange = { pendingMapRouteId = it },
-                onPendingMapRequestNonceChange = { pendingMapRequestNonce = it }
+                onPendingMapRequestNonceChange = { pendingMapRequestNonce = it },
+                onLaunchModeChange = { launchModeName = it.name }
             )
         }
     }
@@ -149,13 +160,15 @@ private fun AppNavGraph(
     modifier: Modifier,
     pendingMapRouteId: String,
     pendingMapRequestNonce: Int,
+    launchMode: LaunchMode,
     selectedRouteMapId: String,
     selectedRouteLabel: String,
     selectedDataRouteId: Int,
     activateRoute: (String) -> Unit,
     clearActiveRoute: () -> Unit,
     onPendingMapRouteIdChange: (String) -> Unit,
-    onPendingMapRequestNonceChange: (Int) -> Unit
+    onPendingMapRequestNonceChange: (Int) -> Unit,
+    onLaunchModeChange: (LaunchMode) -> Unit
 ) {
     NavHost(
         navController = nav,
@@ -174,7 +187,14 @@ private fun AppNavGraph(
         }
         composable("intro") {
             IntroScreen(
-                onStart = { nav.navigate("loading") { launchSingleTop = true } }
+                onStartBackend = {
+                    onLaunchModeChange(LaunchMode.BACKEND)
+                    nav.navigate("loading") { launchSingleTop = true }
+                },
+                onStartLocal = {
+                    onLaunchModeChange(LaunchMode.LOCAL)
+                    nav.navigate("loading") { launchSingleTop = true }
+                }
             )
         }
         composable("loading") {
@@ -223,8 +243,12 @@ private fun AppNavGraph(
         }
         composable("map") {
             MapScreen(
-                initialRouteId = pendingMapRouteId,
-                initialRouteRequestNonce = pendingMapRequestNonce,
+                initialRouteId = pendingMapRouteId.ifBlank { selectedRouteMapId },
+                initialRouteRequestNonce = when {
+                    pendingMapRouteId.isNotBlank() -> pendingMapRequestNonce
+                    selectedRouteMapId.isNotBlank() -> 1
+                    else -> 0
+                },
                 onRouteActivated = { route ->
                     activateRoute(route.id)
                 },
@@ -243,6 +267,7 @@ private fun AppNavGraph(
                 routeMapId = selectedRouteMapId,
                 routeId = selectedDataRouteId,
                 routeLabel = selectedRouteLabel,
+                useBackend = launchMode == LaunchMode.BACKEND,
                 onBack = null
             )
         }
@@ -251,6 +276,7 @@ private fun AppNavGraph(
                 routeMapId = selectedRouteMapId,
                 routeId = selectedDataRouteId,
                 routeLabel = selectedRouteLabel,
+                useBackend = launchMode == LaunchMode.BACKEND,
                 onOpenDetails = { nav.navigate("analytics_details") }
             )
         }
@@ -259,6 +285,7 @@ private fun AppNavGraph(
                 routeMapId = selectedRouteMapId,
                 routeId = selectedDataRouteId,
                 routeLabel = selectedRouteLabel,
+                useBackend = launchMode == LaunchMode.BACKEND,
                 onBack = { nav.popBackStack() }
             )
         }
