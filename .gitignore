@@ -18,6 +18,8 @@ scripts/__pycache__/
 backend/.venv/
 backend/__pycache__/
 backend/app/__pycache__/
+**/__pycache__/
+*.pyc
 .kotlin/
 catboost_info/
 backend/catboost_info/
