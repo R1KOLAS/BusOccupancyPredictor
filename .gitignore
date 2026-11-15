@@ -24,4 +24,4 @@ backend/app/__pycache__/
 catboost_info/
 backend/catboost_info/
 backend/data/transport.sqlite3
-docs/images/contact_sheet.jpg
+/docs/
