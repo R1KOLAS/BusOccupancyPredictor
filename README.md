@@ -1,14 +1,21 @@
-[English](README.md) · [Русский](README.ru.md) · [Қазақша](README.kk.md)
+<div align="center">
+  <h1>QalaBus</h1>
+  <p><strong>English</strong> · <a href="README.ru.md">Русский</a> · <a href="README.kk.md">Қазақша</a></p>
+</div>
 
-# QalaBus
+<div align="center">
+  <a href="#features">Features</a> · <a href="#screenshots">Screenshots</a> · <a href="#run-the-backend">Backend</a> · <a href="#build-the-android-app">Build</a> · <a href="#api">API</a> · <a href="#retrain-the-model">Model</a> · <a href="#project-structure">Structure</a> · <a href="#data-sources">Data</a>
+</div>
 
 QalaBus helps passengers in Almaty explore bus routes and estimate how crowded a trip may be. The map shows routes and stops, while the forecast lets passengers compare different times, weekdays, and weather conditions to help choose a more convenient time to travel.
+
+## Features
 
 The app includes route search, a map, stop-level occupancy forecasts for 10, 20, 30, and 60 minutes ahead, and route analytics.
 
 The forecast currently uses synthetic data, and bus movement on the map is shown in a demo mode.
 
-## App screenshots
+## Screenshots
 
 <table>
   <tr>
