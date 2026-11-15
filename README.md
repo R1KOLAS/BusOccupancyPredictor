@@ -7,7 +7,7 @@
   <a href="#features">Features</a> · <a href="#screenshots">Screenshots</a> · <a href="#run-the-backend">Backend</a> · <a href="#build-the-android-app">Build</a> · <a href="#api">API</a> · <a href="#retrain-the-model">Model</a> · <a href="#project-structure">Structure</a> · <a href="#data-sources">Data</a>
 </div>
 
-QalaBus helps passengers in Almaty explore bus routes and estimate how crowded a trip may be. The map shows routes and stops, while the forecast lets passengers compare different times, weekdays, and weather conditions to help choose a more convenient time to travel.
+QalaBus helps passengers explore bus routes and estimate how crowded a trip may be. The map shows routes and stops, while the forecast lets passengers compare different times, weekdays, and weather conditions to help choose a more convenient time to travel.
 
 ## Features
 
