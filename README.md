@@ -1,25 +1,27 @@
+[English](README.md) · [Русский](README.ru.md) · [Қазақша](README.kk.md)
+
 # QalaBus
 
-QalaBus помогает пассажирам Алматы разобраться в автобусных маршрутах и заранее оценить, насколько загруженной может быть поездка. По карте можно посмотреть путь и остановки, а прогноз помогает сравнить варианты по времени, дню недели и погоде — чтобы выбрать более удобный момент для поездки.
+QalaBus helps passengers in Almaty explore bus routes and estimate how crowded a trip may be. The map shows routes and stops, while the forecast lets passengers compare different times, weekdays, and weather conditions to help choose a more convenient time to travel.
 
-В приложении есть поиск маршрутов, карта, прогноз загруженности на выбранной остановке на 10, 20, 30 и 60 минут, а также аналитика по маршруту.
+The app includes route search, a map, stop-level occupancy forecasts for 10, 20, 30, and 60 minutes ahead, and route analytics.
 
-Пока прогноз строится на синтетических данных, а движение автобусов на карте показано в демонстрационном режиме.
+The forecast currently uses synthetic data, and bus movement on the map is shown in a demo mode.
 
-## Как выглядит приложение
+## App screenshots
 
 <table>
   <tr>
-    <td align="center"><img src="screenshots/Screenshot_20260410_094707.png" width="190" alt="Список маршрутов"></td>
-    <td align="center"><img src="screenshots/Screenshot_20260525_231241.png" width="190" alt="Карта и загруженность"></td>
-    <td align="center"><img src="screenshots/Screenshot_20260410_095042.png" width="190" alt="Прогноз"></td>
-    <td align="center"><img src="screenshots/Screenshot_20260410_095124.png" width="190" alt="Аналитика маршрута"></td>
+    <td align="center"><img src="screenshots/Screenshot_20260410_094707.png" width="190" alt="Route list"></td>
+    <td align="center"><img src="screenshots/Screenshot_20260525_231241.png" width="190" alt="Map and occupancy"></td>
+    <td align="center"><img src="screenshots/Screenshot_20260410_095042.png" width="190" alt="Occupancy forecast"></td>
+    <td align="center"><img src="screenshots/Screenshot_20260410_095124.png" width="190" alt="Route analytics"></td>
   </tr>
 </table>
 
-## Запустить backend
+## Run the backend
 
-Нужен Python 3.10 или новее. В PowerShell откройте терминал в папке `backend`:
+Python 3.10 or newer is required. Open PowerShell in the `backend` directory:
 
 ```powershell
 python -m venv .venv
@@ -28,44 +30,44 @@ python -m pip install -r requirements.txt
 .\start_backend_dev.ps1
 ```
 
-Для обычного запуска без autoreload запустите скрипт start_backend.ps1 из папки backend.
+The API will be available at http://127.0.0.1:8000. Browse the interactive API docs at http://127.0.0.1:8000/docs or check the server health at http://127.0.0.1:8000/health.
 
-При первом старте сервер создаст SQLite-базу в `backend/data/transport.sqlite3` и заполнит её данными маршрутов и остановок.
+To run without autoreload, start `start_backend.ps1` from the `backend` directory. On its first run, the backend creates `backend/data/transport.sqlite3` and loads the route and stop data into SQLite.
 
-### Подключить Android к серверу
+### Connect the Android app to the backend
 
-Адрес задаётся в `BackendServerConfig.baseUrl` в файле `app/src/main/java/com/example/busoccupancypredictor/data/BackendForecastRepository.kt`.
+Set `BackendServerConfig.baseUrl` in `app/src/main/java/com/example/busoccupancypredictor/data/BackendForecastRepository.kt`.
 
-- В эмуляторе Android Studio оставьте `http://10.0.2.2:8000/`.
-- На телефоне укажите локальный IP компьютера, например `http://192.168.1.10:8000/`. Телефон и компьютер должны быть в одной сети.
+- Android Studio emulator: use `http://10.0.2.2:8000/`.
+- Physical device: use your computer's local IP address, for example `http://192.168.1.10:8000/`. The phone and computer must be on the same network.
 
-## Собрать приложение
+## Build the Android app
 
-Откройте проект в Android Studio с установленным Android SDK или соберите его из корня репозитория:
+Open the project in Android Studio with the Android SDK installed, or build it from the repository root:
 
 ```powershell
 ./gradlew.bat assembleDebug
 ```
 
-Готовый APK будет в `app/build/outputs/apk/debug/app-debug.apk`. Для установки на подключённое устройство можно выполнить `./gradlew.bat installDebug`.
+The APK will be created at `app/build/outputs/apk/debug/app-debug.apk`. To install it on a connected device, run `./gradlew.bat installDebug`.
 
-На стартовом экране выберите «Начать», чтобы использовать backend, или «Запуск локально», чтобы посмотреть приложение с локальными демонстрационными данными. В локальном режиме сервер не нужен.
+On the launch screen, choose the backend mode to connect to the server or local mode to explore the app with demo data. Local mode does not require the server.
 
 ## API
 
-Основные запросы:
+The main endpoints are:
 
-- `GET /health` — состояние сервера.
-- `GET /routes` — список маршрутов.
-- `GET /routes/{route_id}/stops` — остановки и направления маршрута.
-- `POST /predict` — прогноз загруженности.
-- `GET /analytics/{route_id}?weather=clear` — аналитика маршрута.
+- `GET /health` — server health.
+- `GET /routes` — list of routes.
+- `GET /routes/{route_id}/stops` — route directions and stops.
+- `POST /predict` — occupancy forecast.
+- `GET /analytics/{route_id}?weather=clear` — route analytics.
 
-Интерактивная документация и пример тела запроса доступны в Swagger UI по адресу `/docs`.
+Interactive documentation and request examples are available in Swagger UI at `/docs`.
 
-## Переобучить модель
+## Retrain the model
 
-Из корня проекта выполните:
+From the repository root, run:
 
 ```powershell
 cd backend
@@ -76,21 +78,21 @@ python .\ml\generate_synthetic_dataset.py
 python .\ml\train_catboost.py
 ```
 
-Скрипты создадут CSV-датасет и модель в папках `backend/data/` и `backend/models/`. Датасет синтетический; генератор по умолчанию использует seed `42`. Параметры генерации и пути можно посмотреть через `--help`.
+The scripts create the CSV dataset and model in `backend/data/` and `backend/models/`. The dataset is synthetic, and the generator uses seed `42` by default. Use `--help` to see options for dataset size and output paths.
 
-Чтобы получить CSV и график важности признаков, запустите `python .\ml\export_feature_importance.py`. Для PNG потребуется дополнительно установить `matplotlib`.
+To export feature importance as CSV and a chart, run `python .\ml\export_feature_importance.py`. The PNG chart additionally requires `matplotlib`.
 
-## Где что лежит
+## Project structure
 
-- `app/` — Android-клиент на Kotlin и Jetpack Compose.
-- `backend/app/` — FastAPI, прогнозирование, аналитика и работа с SQLite.
-- `backend/ml/` — генерация обучающего набора и обучение CatBoost.
-- `backend/models/` — модель и результаты её обучения.
-- `app/src/main/assets/` — данные маршрутов и остановок для приложения.
-- `data/exports/` — подготовленные выгрузки маршрутов и остановок.
+- `app/` — Android client built with Kotlin and Jetpack Compose.
+- `backend/app/` — FastAPI, forecasting, analytics, and SQLite storage.
+- `backend/ml/` — synthetic dataset generation and CatBoost training.
+- `backend/models/` — trained model and training artifacts.
+- `app/src/main/assets/` — route and stop data bundled with the Android app.
+- `data/exports/` — prepared route and stop exports.
 
-Клиент настроен на Android с `minSdk 24`; проект использует Android Gradle Plugin 9.1.0 и Kotlin 2.2.10.
+The Android client supports `minSdk 24`. The project uses Android Gradle Plugin 9.1.0 and Kotlin 2.2.10.
 
-## Источники данных
+## Data sources
 
-Перед публикацией проекта проверьте условия использования данных 2GIS и тайлов OpenStreetMap и добавьте нужную атрибуцию. Отдельная лицензия проекта пока не добавлена.
+Before publishing, check the terms for the 2GIS data and OpenStreetMap tiles and include any required attribution. This repository does not currently specify a project license.
